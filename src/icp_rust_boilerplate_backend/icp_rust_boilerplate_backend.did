@@ -1,0 +1,51 @@
+type Farmer = record {
+  id : nat64;
+  bio : text;
+  is_sold : bool;
+  dispute_status : bool;
+  consumer_address : opt text;
+  name : text;
+  address : text;
+  category : text;
+  rating : nat8;
+  escrow_balance : nat64;
+  price : nat64;
+  product_status : text;
+};
+type FarmerPayload = record {
+  bio : text;
+  name : text;
+  address : text;
+  category : text;
+  price : nat64;
+  product_status : text;
+};
+type MarkProductSoldPayload = record {
+  consumer_address : text;
+  farmer_id : nat64;
+};
+type ProductBidPayload = record { consumer_address : text; farmer_id : nat64 };
+type Result = variant { Ok; Err : text };
+type Result_1 = variant { Ok : Farmer; Err : text };
+type Result_2 = variant { Ok : text; Err : text };
+type Result_3 = variant { Ok : nat64; Err : text };
+type WithdrawFromEscrowPayload = record { farmer_id : nat64; amount : nat64 };
+service : {
+  accept_bid : (nat64) -> (Result);
+  add_product : (FarmerPayload) -> (Result_1);
+  add_to_escrow : (nat64, nat64) -> (Result);
+  dispute_product : (nat64) -> (Result);
+  get_product_description : (nat64) -> (Result_2) query;
+  get_product_price : (nat64) -> (Result_3) query;
+  get_product_status : (nat64) -> (Result_2) query;
+  mark_product_sold : (MarkProductSoldPayload) -> (Result);
+  product_bid : (ProductBidPayload) -> (Result);
+  rate_farmer : (nat64, nat8) -> (Result);
+  release_payment : (nat64) -> (Result);
+  resolve_dispute : (nat64, bool) -> (Result);
+  update_product_category : (nat64, text) -> (Result);
+  update_product_description : (nat64, text) -> (Result);
+  update_product_price : (nat64, nat64) -> (Result);
+  update_product_status : (nat64, text) -> (Result);
+  withdraw_from_escrow : (WithdrawFromEscrowPayload) -> (Result);
+}
