@@ -1,4 +1,4 @@
-# Decentralized Mobile Market Platform
+# Decentralized AgriLink Market Platform
 
 This project is a decentralized platform built on the Internet Computer for facilitating direct transactions between farmers and consumers, bypassing traditional market intermediaries. The platform allows farmers to list products, manage bids, and handle payments securely within a decentralized framework, enhancing transparency and efficiency.
 
