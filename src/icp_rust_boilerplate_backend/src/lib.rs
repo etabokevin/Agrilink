@@ -1,7 +1,6 @@
 #[macro_use]
 extern crate serde;
 use candid::{Decode, Encode};
-// use ic_cdk::api::time;
 use ic_stable_structures::memory_manager::{MemoryId, MemoryManager, VirtualMemory};
 use ic_stable_structures::{BoundedStorable, Cell, DefaultMemoryImpl, StableBTreeMap, Storable};
 use std::{borrow::Cow, cell::RefCell};
@@ -33,7 +32,7 @@ struct ProductRecord {
     farmer_address: String,
 }
 
-// Storable and BoundedStorable implementations for Farmer
+// Implementing Storable and BoundedStorable for Farmer
 impl Storable for Farmer {
     fn to_bytes(&self) -> Cow<[u8]> {
         Cow::Owned(Encode!(self).unwrap())
@@ -49,7 +48,7 @@ impl BoundedStorable for Farmer {
     const IS_FIXED_SIZE: bool = false;
 }
 
-// Storable and BoundedStorable implementations for ProductRecord
+// Implementing Storable and BoundedStorable for ProductRecord
 impl Storable for ProductRecord {
     fn to_bytes(&self) -> Cow<[u8]> {
         Cow::Owned(Encode!(self).unwrap())
@@ -97,21 +96,21 @@ struct FarmerPayload {
     product_status: String,
 }
 
-// Product_bid Payload
+// ProductBid Payload
 #[derive(candid::CandidType, Deserialize, Serialize)]
 struct ProductBidPayload {
     farmer_id: u64,
     consumer_address: String,
 }
 
-// Mark_Product_Sold Payload
+// MarkProductSold Payload
 #[derive(candid::CandidType, Deserialize, Serialize)]
 struct MarkProductSoldPayload {
     farmer_id: u64,
     consumer_address: String,
 }
 
-// Withdraw_from_escrow Payload
+// WithdrawFromEscrow Payload
 #[derive(candid::CandidType, Deserialize, Serialize)]
 struct WithdrawFromEscrowPayload {
     farmer_id: u64,
@@ -120,6 +119,7 @@ struct WithdrawFromEscrowPayload {
 
 // Accessor Functions
 
+/// Retrieves the bio description of a farmer's product.
 #[ic_cdk::query]
 fn get_product_description(farmer_id: u64) -> Result<String, String> {
     FARMERS_STORAGE.with(|storage| {
@@ -130,6 +130,7 @@ fn get_product_description(farmer_id: u64) -> Result<String, String> {
     })
 }
 
+/// Retrieves the price of a farmer's product.
 #[ic_cdk::query]
 fn get_product_price(farmer_id: u64) -> Result<u64, String> {
     FARMERS_STORAGE.with(|storage| {
@@ -140,6 +141,7 @@ fn get_product_price(farmer_id: u64) -> Result<u64, String> {
     })
 }
 
+/// Retrieves the status of a farmer's product.
 #[ic_cdk::query]
 fn get_product_status(farmer_id: u64) -> Result<String, String> {
     FARMERS_STORAGE.with(|storage| {
@@ -152,8 +154,19 @@ fn get_product_status(farmer_id: u64) -> Result<String, String> {
 
 // Public Entry Functions
 
+/// Adds a new product entry for a farmer.
 #[ic_cdk::update]
 fn add_product(payload: FarmerPayload) -> Result<Farmer, String> {
+    // Validate input payload
+    if payload.address.is_empty()
+        || payload.name.is_empty()
+        || payload.bio.is_empty()
+        || payload.category.is_empty()
+        || payload.product_status.is_empty()
+    {
+        return Err("All fields must be provided and non-empty".to_string());
+    }
+
     let id = ID_COUNTER
         .with(|counter| {
             let current_value = *counter.borrow().get();
@@ -181,59 +194,67 @@ fn add_product(payload: FarmerPayload) -> Result<Farmer, String> {
     Ok(farmer)
 }
 
-// Function for a consumer to bid on a product
+/// Allows a consumer to place a bid on a farmer's product.
 #[ic_cdk::update]
 fn product_bid(payload: ProductBidPayload) -> Result<(), String> {
+    // Validate input payload
+    if payload.consumer_address.is_empty() {
+        return Err("Consumer address must be provided and non-empty".to_string());
+    }
+
     let mut farmer = FARMERS_STORAGE
         .with(|storage| storage.borrow_mut().get(&payload.farmer_id))
         .ok_or("Farmer not found".to_string())?;
 
+    // Check if the product already has a consumer bid
     if farmer.consumer_address.is_none() {
         farmer.consumer_address = Some(payload.consumer_address);
         farmer.product_status = "Bid Placed".to_string();
         FARMERS_STORAGE.with(|storage| storage.borrow_mut().insert(payload.farmer_id, farmer));
         Ok(())
     } else {
-        Err("Product already bid on".to_string())
+        Err("Product already has a bid placed".to_string())
     }
 }
 
-// Function for a farmer to accept a bid on their product
+/// Allows a farmer to accept a bid on their product.
 #[ic_cdk::update]
 fn accept_bid(farmer_id: u64) -> Result<(), String> {
     let mut farmer = FARMERS_STORAGE
         .with(|storage| storage.borrow_mut().get(&farmer_id))
         .ok_or("Farmer not found".to_string())?;
-    
-    if farmer.consumer_address.is_some() {
+
+    // Check if a consumer has placed a bid on the product
+    if let Some(_) = farmer.consumer_address {
         farmer.product_status = "Bid Accepted".to_string();
         FARMERS_STORAGE.with(|storage| storage.borrow_mut().insert(farmer_id, farmer));
         Ok(())
     } else {
-        Err("No bid to accept".to_string())
+        Err("No bid placed on the product".to_string())
     }
 }
 
+/// Marks a product as sold, updating its status and consumer details.
 #[ic_cdk::update]
 fn mark_product_sold(payload: MarkProductSoldPayload) -> Result<(), String> {
-    // Retrieve and update the farmer within a single borrow scope
     let mut farmer = FARMERS_STORAGE
         .with(|storage| storage.borrow_mut().get(&payload.farmer_id))
         .ok_or("Farmer not found".to_string())?;
 
-    if farmer.consumer_address.is_some() {
+    // Check if a consumer has placed a bid and mark the product as sold
+    if let Some(_) = farmer.consumer_address {
         farmer.is_sold = true;
         farmer.product_status = "Product Sold".to_string();
         FARMERS_STORAGE.with(|storage| storage.borrow_mut().insert(payload.farmer_id, farmer));
         Ok(())
     } else {
-        Err("No consumer to sell to".to_string())
+        Err("No consumer has placed a bid on the product".to_string())
     }
 }
 
+/// Raises a dispute for a product, updating its status accordingly.
 #[ic_cdk::update]
 fn dispute_product(farmer_id: u64) -> Result<(), String> {
-    // Retrieve and update the farmer within a single borrow scope
     let mut farmer = FARMERS_STORAGE
         .with(|storage| storage.borrow_mut().get(&farmer_id))
         .ok_or("Farmer not found".to_string())?;
@@ -244,19 +265,19 @@ fn dispute_product(farmer_id: u64) -> Result<(), String> {
     Ok(())
 }
 
+/// Resolves a dispute for a product based on the resolution provided.
 #[ic_cdk::update]
 fn resolve_dispute(farmer_id: u64, resolution: bool) -> Result<(), String> {
-    // Retrieve the farmer within a single borrow scope
     let mut farmer = FARMERS_STORAGE
         .with(|storage| storage.borrow_mut().get(&farmer_id))
         .ok_or("Farmer not found".to_string())?;
 
-    // Check for dispute status
+    // Check if there is an active dispute to resolve
     if !farmer.dispute_status {
-        return Err("No dispute to resolve".to_string());
+        return Err("No active dispute to resolve".to_string());
     }
 
-    // Update the farmer's dispute status and product status
+    // Update product status based on resolution
     farmer.dispute_status = false;
     farmer.product_status = if resolution {
         "Dispute Resolved - Funds to Farmer".to_string()
@@ -264,20 +285,19 @@ fn resolve_dispute(farmer_id: u64, resolution: bool) -> Result<(), String> {
         "Dispute Resolved - Funds to Consumer".to_string()
     };
 
-    // Insert the updated farmer back into the storage
     FARMERS_STORAGE.with(|storage| storage.borrow_mut().insert(farmer_id, farmer));
 
     Ok(())
 }
 
+/// Releases the escrowed payment for a sold product to the farmer.
 #[ic_cdk::update]
 fn release_payment(farmer_id: u64) -> Result<(), String> {
-    // Retrieve the farmer within a single borrow scope
     let mut farmer = FARMERS_STORAGE
         .with(|storage| storage.borrow_mut().get(&farmer_id))
         .ok_or("Farmer not found".to_string())?;
 
-    // Check if the product is sold and no dispute is unresolved
+    // Check if the product is sold and there are no active disputes
     if farmer.is_sold && !farmer.dispute_status {
         farmer.escrow_balance = 0;
         let product_record = ProductRecord {
@@ -285,52 +305,49 @@ fn release_payment(farmer_id: u64) -> Result<(), String> {
             farmer_address: farmer.address.clone(),
         };
 
-        // Insert the product record into PRODUCTS_STORAGE
+        // Store product record in PRODUCTS_STORAGE
         PRODUCTS_STORAGE.with(|storage| storage.borrow_mut().insert(farmer.id, product_record));
 
-        // Insert the updated farmer back into the FARMERS_STORAGE
+        // Update farmer status in FARMERS_STORAGE
         FARMERS_STORAGE.with(|storage| storage.borrow_mut().insert(farmer_id, farmer));
 
         Ok(())
     } else {
-        Err("Product not sold or dispute unresolved".to_string())
+        Err("Product is not sold or has an unresolved dispute".to_string())
     }
 }
 
+/// Adds funds to the escrow for a farmer's product.
 #[ic_cdk::update]
 fn add_to_escrow(farmer_id: u64, amount: u64) -> Result<(), String> {
-    // Retrieve and update the farmer within a single borrow scope
     let mut farmer = FARMERS_STORAGE
         .with(|storage| storage.borrow_mut().get(&farmer_id))
         .ok_or("Farmer not found".to_string())?;
 
     farmer.escrow_balance += amount;
 
-    // Insert the updated farmer back into the storage
     FARMERS_STORAGE.with(|storage| storage.borrow_mut().insert(farmer_id, farmer));
 
     Ok(())
 }
 
+/// Withdraws funds from the escrow for a farmer's product.
 #[ic_cdk::update]
 fn withdraw_from_escrow(payload: WithdrawFromEscrowPayload) -> Result<(), String> {
-    // Retrieve and update the farmer within a single borrow scope
     let mut farmer = FARMERS_STORAGE
         .with(|storage| storage.borrow_mut().get(&payload.farmer_id))
         .ok_or("Farmer not found".to_string())?;
 
     if farmer.escrow_balance >= payload.amount {
         farmer.escrow_balance -= payload.amount;
-
-        // Insert the updated farmer back into the storage
         FARMERS_STORAGE.with(|storage| storage.borrow_mut().insert(payload.farmer_id, farmer));
-
         Ok(())
     } else {
         Err("Insufficient funds in escrow".to_string())
     }
 }
 
+/// Updates the category of a farmer's product.
 #[ic_cdk::update]
 fn update_product_category(farmer_id: u64, category: String) -> Result<(), String> {
     FARMERS_STORAGE.with(|storage| {
@@ -344,6 +361,7 @@ fn update_product_category(farmer_id: u64, category: String) -> Result<(), Strin
     })
 }
 
+/// Updates the description of a farmer's product.
 #[ic_cdk::update]
 fn update_product_description(farmer_id: u64, bio: String) -> Result<(), String> {
     FARMERS_STORAGE.with(|storage| {
@@ -357,6 +375,7 @@ fn update_product_description(farmer_id: u64, bio: String) -> Result<(), String>
     })
 }
 
+/// Updates the price of a farmer's product.
 #[ic_cdk::update]
 fn update_product_price(farmer_id: u64, price: u64) -> Result<(), String> {
     FARMERS_STORAGE.with(|storage| {
@@ -370,6 +389,7 @@ fn update_product_price(farmer_id: u64, price: u64) -> Result<(), String> {
     })
 }
 
+/// Updates the status of a farmer's product.
 #[ic_cdk::update]
 fn update_product_status(farmer_id: u64, status: String) -> Result<(), String> {
     FARMERS_STORAGE.with(|storage| {
@@ -383,6 +403,7 @@ fn update_product_status(farmer_id: u64, status: String) -> Result<(), String> {
     })
 }
 
+/// Rates a farmer based on a numeric rating.
 #[ic_cdk::update]
 fn rate_farmer(farmer_id: u64, rating: u8) -> Result<(), String> {
     let mut farmer = FARMERS_STORAGE
@@ -391,10 +412,11 @@ fn rate_farmer(farmer_id: u64, rating: u8) -> Result<(), String> {
 
     farmer.rating = rating;
     FARMERS_STORAGE.with(|storage| storage.borrow_mut().insert(farmer_id, farmer));
+
     Ok(())
 }
 
-// Error types
+// Error types for the system
 #[derive(candid::CandidType, Deserialize, Serialize)]
 enum Error {
     EInvalidBid,
@@ -406,5 +428,5 @@ enum Error {
     EInsufficientEscrow,
 }
 
-// need this to generate candid
+// Exporting the Candid interface for the canister
 ic_cdk::export_candid!();
